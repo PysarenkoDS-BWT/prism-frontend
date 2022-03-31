@@ -1,5 +1,5 @@
-import { FeatureCollection } from 'geojson';
-import { get, isNull, isString } from 'lodash';
+import { FeatureCollection, Feature } from 'geojson';
+import { get, isString } from 'lodash';
 import {
   BoundaryLayerProps,
   AdminLevelDataLayerProps,
@@ -10,6 +10,9 @@ import {
   getBoundaryLayerSingleton,
   LayerDefinitions,
 } from '../../config/utils';
+
+import { fetchJsonDataList } from '../../utils/server-utils';
+
 import type { LayerData, LayerDataParams, LazyLoader } from './layer-data';
 import { layerDataSelector } from '../mapStateSlice/selectors';
 
@@ -19,7 +22,7 @@ export type DataRecord = {
 };
 
 export type AdminLevelDataLayerData = {
-  features: FeatureCollection;
+  featureCollection: FeatureCollection;
   layerData: DataRecord[];
 };
 
@@ -27,7 +30,14 @@ export const fetchAdminLevelDataLayerData: LazyLoader<AdminLevelDataLayerProps> 
   { layer }: LayerDataParams<AdminLevelDataLayerProps>,
   api: ThunkApi,
 ) => {
-  const { path, adminCode, dataField, featureInfoProps, boundary } = layer;
+  const {
+    path,
+    adminCode,
+    dataField,
+    featureInfoProps,
+    boundary,
+    dateField,
+  } = layer;
   const { getState } = api;
 
   // check unique boundary layer presence into this layer
@@ -46,10 +56,8 @@ export const fetchAdminLevelDataLayerData: LazyLoader<AdminLevelDataLayerProps> 
     throw new Error('Boundary Layer not loaded!');
   }
   const adminBoundaries = adminBoundariesLayer.data;
-  // TODO avoid any use, the json should be typed. See issue #307
-  const { DataList: rawJSONs }: { DataList: { [key: string]: any }[] } = await (
-    await fetch(path, { mode: path.includes('http') ? 'cors' : 'same-origin' })
-  ).json();
+
+  const rawJSONs = await fetchJsonDataList(path);
 
   const layerData = (rawJSONs || [])
     .map(point => {
@@ -67,42 +75,46 @@ export const fetchAdminLevelDataLayerData: LazyLoader<AdminLevelDataLayerProps> 
         },
         {},
       );
-      return { adminKey, value, ...featureInfoPropsValues };
+
+      const dateObj = dateField ? { [dateField]: point[dateField] } : {};
+
+      return { adminKey, value, ...featureInfoPropsValues, ...dateObj };
     })
     .filter((v): v is DataRecord => v !== undefined);
 
-  const features = {
-    ...adminBoundaries,
-    features: adminBoundaries.features
-      .map(feature => {
-        const { properties } = feature;
-        const adminBoundaryCode = get(
-          properties,
-          adminBoundaryLayer.adminCode,
-        ) as string;
-        const matchProperties = layerData.find(({ adminKey }) =>
-          adminBoundaryCode.startsWith(adminKey),
-        );
-        if (matchProperties && !isNull(matchProperties.value)) {
-          // Do we want support for non-numeric values (like string colors?)
-          return {
-            ...feature,
-            properties: {
-              ...properties,
-              ...matchProperties,
-              data: isString(matchProperties.value)
-                ? parseFloat(matchProperties.value)
-                : matchProperties.value,
-            },
-          };
-        }
-        return undefined;
-      })
-      .filter(f => f !== undefined),
-  } as FeatureCollection;
+  const features = adminBoundaries.features.reduce(
+    (acc: Feature[], feature: Feature) => {
+      const { properties } = feature;
+      const adminBoundaryCode = get(properties, adminCode);
+      const matches = layerData.filter(
+        ({ adminKey }) => adminBoundaryCode === adminKey,
+      );
+
+      if (matches.length === 0) {
+        return acc;
+      }
+
+      const featureMatches = matches.map(match => ({
+        ...feature,
+        properties: {
+          ...properties,
+          ...match,
+          data: isString(match.value) ? parseFloat(match.value) : match.value,
+        },
+      }));
+
+      return [...acc, ...featureMatches];
+    },
+    [],
+  );
+
+  const featureCollection: FeatureCollection = {
+    type: 'FeatureCollection',
+    features,
+  };
 
   return {
-    features,
+    featureCollection,
     layerData,
   };
 };

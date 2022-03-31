@@ -1,18 +1,28 @@
 import moment from 'moment';
 import { xml2js } from 'xml-js';
-import { get, isEmpty, isString, merge, union, snakeCase } from 'lodash';
+import {
+  get,
+  isEmpty,
+  isString,
+  merge,
+  union,
+  snakeCase,
+  sortBy,
+} from 'lodash';
 import { appConfig } from '../config';
 import { LayerDefinitions } from '../config/utils';
 import type {
   AvailableDates,
   PointDataLayerProps,
   RequestFeatureInfo,
+  AdminLevelDataLayerProps,
 } from '../config/types';
 import {
   ImpactLayerProps,
   WMSLayerProps,
   FeatureInfoType,
   LabelType,
+  DataListJson,
 } from '../config/types';
 
 import { queryParamsToString } from '../context/layers/point_data';
@@ -28,6 +38,7 @@ const xml2jsOptions = {
 export type DateCompatibleLayer =
   | WMSLayerProps
   | ImpactLayerProps
+  | AdminLevelDataLayerProps
   | PointDataLayerProps;
 export const getPossibleDatesForLayer = (
   layer: DateCompatibleLayer,
@@ -43,6 +54,7 @@ export const getPossibleDatesForLayer = (
         (LayerDefinitions[layer.hazardLayer] as WMSLayerProps).serverLayerName
       ];
     case 'point_data':
+    case 'admin_level_data':
       return serverAvailableDates[layer.id];
   }
 };
@@ -268,6 +280,29 @@ async function getPointDataCoverage(layer: PointDataLayerProps) {
   return possibleDates;
 }
 
+export const fetchJsonDataList = async (path: string) => {
+  const { DataList: data }: DataListJson = await (
+    await fetch(path, { mode: path.includes('http') ? 'cors' : 'same-origin' })
+  ).json();
+
+  return data;
+};
+
+const getAdminLevelDataCoverage = async ({
+  path,
+  dateField,
+}: AdminLevelDataLayerProps) => {
+  const rawJSONs = await fetchJsonDataList(path);
+
+  const dates: number[] = rawJSONs.map(item =>
+    moment.utc(item[dateField!]).set({ hour: 12 }).valueOf(),
+  );
+
+  const setDates = [...new Set(dates)];
+
+  return sortBy(setDates);
+};
+
 /**
  * Load available dates for WMS and WCS using a serverUri defined in prism.json and for GeoJSONs (point data) using their API endpoint.
  *
@@ -281,9 +316,17 @@ export async function getLayersAvailableDates(): Promise<AvailableDates> {
     (layer): layer is PointDataLayerProps => layer.type === 'point_data',
   );
 
+  const adminLevelDataLayers = Object.values(LayerDefinitions).filter(
+    (layer): layer is AdminLevelDataLayerProps =>
+      layer.type === 'admin_level_data' && layer.dateField !== undefined,
+  );
+
   const layerDates: AvailableDates[] = await Promise.all([
     ...wmsServerUrls.map(url => getWMSCapabilities(url)),
     ...wcsServerUrls.map(url => getWCSCoverage(url)),
+    ...adminLevelDataLayers.map(async layer => ({
+      [layer.id]: await getAdminLevelDataCoverage(layer),
+    })),
     ...pointDataLayers.map(async layer => ({
       [layer.id]: await getPointDataCoverage(layer),
     })),

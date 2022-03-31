@@ -287,6 +287,9 @@ export class AdminLevelDataLayerProps extends CommonLayerProps {
 
   @optional
   boundary?: LayerKey;
+
+  @optional
+  dateField?: string;
 }
 
 export class StatsApi {
@@ -391,7 +394,8 @@ export interface MenuItemMobileType {
 export type AvailableDates = {
   [key in
     | WMSLayerProps['serverLayerName']
-    | PointDataLayerProps['id']]: number[];
+    | PointDataLayerProps['id']
+    | AdminLevelDataLayerProps['id']]: number[];
 };
 
 /* eslint-disable camelcase */
@@ -457,3 +461,5 @@ export enum DownloadFormat {
   CSV,
   JSON,
 }
+
+export type DataListJson = { DataList: { [key: string]: any }[] };

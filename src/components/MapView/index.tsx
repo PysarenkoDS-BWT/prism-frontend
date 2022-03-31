@@ -106,6 +106,7 @@ const dateSupportLayerTypes: Array<LayerType['type']> = [
   'impact',
   'point_data',
   'wms',
+  'admin_level_data',
 ];
 const boundaryLayer = getBoundaryLayerSingleton();
 
@@ -274,7 +275,8 @@ function MapView({ classes }: MapViewProps) {
     if (
       urlDate &&
       moment(urlDate).valueOf() !== selectedDate &&
-      selectedLayersIds.includes(hazardLayerId as LayerKey)
+      (selectedLayersIds.includes(hazardLayerId as LayerKey) ||
+        selectedLayersIds.includes(baselineLayerId as LayerKey))
     ) {
       const dateInt = moment(urlDate).valueOf();
       if (Number.isNaN(dateInt)) {

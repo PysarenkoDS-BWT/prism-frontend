@@ -47,7 +47,8 @@
         "spi_3m",
         "spi_6m",
         "spi_9m",
-        "spi_1y"
+        "spi_1y",
+        "test_remote"
       ],
       "dry_periods": [
         "days_dry",

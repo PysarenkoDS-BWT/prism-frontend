@@ -279,7 +279,7 @@ export function generateFeaturesFromApiData(
   operation: AggregationOperations,
 ): GeoJsonBoundary[] {
   const mergedFeatures = mergeFeaturesByProperty(
-    baselineData.features.features,
+    baselineData.featureCollection.features,
     aggregateData,
     groupBy,
   );

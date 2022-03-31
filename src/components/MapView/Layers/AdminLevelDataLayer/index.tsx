@@ -1,3 +1,4 @@
+import moment from 'moment';
 import React, { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { get } from 'lodash';
@@ -20,6 +21,7 @@ import {
 import { addLayer, removeLayer } from '../../../../context/mapStateSlice';
 import { addPopupData } from '../../../../context/tooltipStateSlice';
 import { getFeatureInfoPropsData } from '../../utils';
+import { useDefaultDate } from '../../../../utils/useDefaultDate';
 import {
   getBoundaryLayers,
   getBoundaryLayerSingleton,
@@ -39,8 +41,9 @@ function AdminLevelDataLayers({ layer }: { layer: AdminLevelDataLayerProps }) {
     | LayerData<AdminLevelDataLayerProps>
     | undefined;
   const { data } = layerData || {};
-  const { features } = data || {};
+  const { featureCollection } = data || {};
   const { t } = useSafeTranslation();
+  const selectedDate = useDefaultDate(layer.id);
 
   useEffect(() => {
     // before loading layer check if it has unique boundary?
@@ -68,12 +71,12 @@ function AdminLevelDataLayers({ layer }: { layer: AdminLevelDataLayerProps }) {
         );
       }
     }
-    if (!features) {
+    if (!featureCollection) {
       dispatch(loadLayerData({ layer }));
     }
-  }, [dispatch, features, layer, boundaryId, map]);
+  }, [dispatch, featureCollection, layer, boundaryId, map]);
 
-  if (!features) {
+  if (!featureCollection) {
     return null;
   }
 
@@ -91,11 +94,34 @@ function AdminLevelDataLayers({ layer }: { layer: AdminLevelDataLayerProps }) {
     },
   };
 
+  const selectedDateStr = moment(selectedDate).format('YYYY-MM-DD');
+
+  const { features } = featureCollection;
+
+  const filteredFeatures = layer.dateField
+    ? features.filter(feature => {
+        const { properties } = feature;
+        if (!properties) {
+          return false;
+        }
+
+        const featureMatchesDate =
+          properties[layer.dateField!] === selectedDateStr;
+
+        return featureMatchesDate;
+      })
+    : features;
+
+  const newFeatureCollection = {
+    type: 'FeatureCollection',
+    features: filteredFeatures,
+  };
+
   return (
     <GeoJSONLayer
       before={`layer-${boundaryId}-line`}
       id={`layer-${layer.id}`}
-      data={features}
+      data={newFeatureCollection}
       fillPaint={fillPaintData}
       fillOnClick={async (evt: any) => {
         // by default add `data_field` to the tooltip
